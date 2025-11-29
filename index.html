@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Penggabung Gambar Otomatis</title>
+    
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 800px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .file-upload-label {
+            display: block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            text-align: center;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .file-upload-label:hover {
+            background-color: #0056b3;
+        }
+        #preview-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            border: 1px dashed #ccc;
+            padding: 10px;
+            min-height: 50px;
+            margin-bottom: 20px;
+        }
+        #preview-container img {
+            max-height: 100px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .controls label {
+            font-weight: bold;
+        }
+        .result-area {
+            margin-top: 20px;
+        }
+        #stitch-button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+            flex-grow: 1; /* Agar tombol mengisi ruang yang tersisa */
+        }
+        #stitch-button:hover {
+            background-color: #1e7e34;
+        }
+        .download-btn {
+            display: block;
+            background-color: #ffc107;
+            color: #333;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 15px;
+            width: 100%;
+        }
+        #image-canvas {
+            max-width: 100%; 
+            height: auto;
+            border: 1px solid #ccc;
+            display: block;
+            margin: 20px auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖼️ Penggabung Gambar Otomatis</h1>
+        
+        <label for="image-input" class="file-upload-label">
+            Pilih Foto (Bisa lebih dari 1)
+        </label>
+        <input type="file" id="image-input" accept="image/*" multiple style="display: none;">
+
+        <div id="preview-container">
+            </div>
+
+        <hr>
+
+        <div class="controls">
+            <label for="direction">Arah Gabungan:</label>
+            <select id="direction">
+                <option value="vertical">Vertikal (ke Bawah)</option>
+                <option value="horizontal">Horizontal (ke Samping)</option>
+            </select>
+            <button id="stitch-button">Gabungkan Gambar</button>
+        </div>
+
+        <div class="result-area">
+            <h2>Hasil Gabungan</h2>
+            <canvas id="image-canvas" style="display: none;"></canvas>
+            <a id="download-link" download="hasil_gabungan.png" style="display: none;">
+                <button class="download-btn">📥 Unduh Gambar</button>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. Ambil Elemen HTML (Semua konstanta harus ada di DALAM fungsi ini)
+            const imageInput = document.getElementById('image-input');
+            const previewContainer = document.getElementById('preview-container');
+            const stitchButton = document.getElementById('stitch-button');
+            const imageCanvas = document.getElementById('image-canvas');
+            const downloadLink = document.getElementById('download-link');
+            const directionSelect = document.getElementById('direction');
+            
+            // PENTING: Mendapatkan konteks Canvas harus setelah elemen dimuat
+            if (!imageCanvas) {
+                console.error("Canvas element not found!");
+                return; // Berhenti jika elemen canvas tidak ditemukan
+            }
+            // Konteks Canvas dipastikan diambil di sini
+            const ctx = imageCanvas.getContext('2d');
+
+            let uploadedImages = []; // Array untuk menyimpan objek gambar (HTMLImageElement)
+
+            // --- FUNGSI TAMPILKAN PREVIEW DAN LOAD GAMBAR ---
+            imageInput.addEventListener('change', (event) => {
+                uploadedImages = []; // Reset array
+                previewContainer.innerHTML = '';
+                downloadLink.style.display = 'none';
+                imageCanvas.style.display = 'none';
+
+                const files = event.target.files;
+                let imagesLoaded = 0;
+
+                // Looping untuk memproses semua file yang diunggah
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const reader = new FileReader();
+
+                    reader.onload = (e) => {
+                        // 1. Tampilkan Preview
+                        const imgPreview = document.createElement('img');
+                        imgPreview.src = e.target.result;
+                        previewContainer.appendChild(imgPreview);
+
+                        // 2. Load Gambar untuk Canvas
+                        const img = new Image();
+                        img.onload = () => {
+                            uploadedImages.push(img);
+                            imagesLoaded++;
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+
+            // --- FUNGSI UTAMA UNTUK MENGGABUNGKAN GAMBAR ---
+            stitchButton.addEventListener('click', () => {
+                if (uploadedImages.length < 2) {
+                    alert('Mohon unggah minimal 2 gambar untuk digabungkan.');
+                    return;
+                }
+
+                const direction = directionSelect.value;
+                const outputImages = uploadedImages.slice(); 
+                
+                let outputWidth = 0;
+                let outputHeight = 0;
+                let currentPos = 0; 
+
+                // A. LOGIKA UNTUK PENGGABUNGAN VERTIKAL
+                if (direction === 'vertical') {
+                    // Lebar seragam: Ambil lebar gambar pertama
+                    outputWidth = outputImages[0].width;
+                    
+                    // Hitung total tinggi yang dibutuhkan (dengan scaling lebar)
+                    outputImages.forEach(img => {
+                        img.scaledHeight = (img.height / img.width) * outputWidth;
+                        outputHeight += img.scaledHeight;
+                    });
+
+                    // Konfigurasi Canvas
+                    imageCanvas.width = outputWidth;
+                    imageCanvas.height = outputHeight;
+                    
+                    // Gambar semua gambar ke Canvas
+                    ctx.clearRect(0, 0, outputWidth, outputHeight); 
+                    outputImages.forEach(img => {
+                        ctx.drawImage(img, 0, currentPos, outputWidth, img.scaledHeight); 
+                        currentPos += img.scaledHeight; 
+                    });
+                } 
+                // B. LOGIKA UNTUK PENGGABUNGAN HORIZONTAL
+                else if (direction === 'horizontal') {
+                    // Tinggi seragam: Ambil tinggi gambar pertama
+                    outputHeight = outputImages[0].height;
+
+                    // Hitung total lebar yang dibutuhkan (dengan scaling tinggi)
+                    outputImages.forEach(img => {
+                        img.scaledWidth = (img.width / img.height) * outputHeight;
+                        outputWidth += img.scaledWidth;
+                    });
+                    
+                    // Konfigurasi Canvas
+                    imageCanvas.width = outputWidth;
+                    imageCanvas.height = outputHeight;
+
+                    // Gambar semua gambar ke Canvas
+                    ctx.clearRect(0, 0, outputWidth, outputHeight); 
+                    outputImages.forEach(img => {
+                        ctx.drawImage(img, currentPos, 0, img.scaledWidth, outputHeight); 
+                        currentPos += img.scaledWidth; 
+                    });
+                }
+                
+                // C. Tampilkan Hasil dan Link Unduh
+                imageCanvas.style.display = 'block';
+                downloadLink.style.display = 'block';
+                const dataURL = imageCanvas.toDataURL('image/png');
+                downloadLink.href = dataURL;
+                downloadLink.querySelector('.download-btn').textContent = '📥 Unduh Hasil Gabungan (.png)';
+            });
+        });
+    </script>
+</body>
+</html>
